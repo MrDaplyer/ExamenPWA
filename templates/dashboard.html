@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#667eea">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>Dashboard - Sistema de Cotizaciones</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="manifest" href="/manifest.json">
+</head>
+<body>
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <div class="logo">
+                <i class="fas fa-file-invoice-dollar"></i>
+                <span>CotizaPro</span>
+            </div>
+            <button class="sidebar-toggle" id="sidebarToggle">
+                <i class="fas fa-bars"></i>
+            </button>
+        </div>
+
+        <nav class="sidebar-nav">
+            <ul>
+                <li class="active" data-section="overview">
+                    <a href="#overview">
+                        <i class="fas fa-home"></i>
+                        <span>Resumen</span>
+                    </a>
+                </li>
+                <li data-section="cotizaciones">
+                    <a href="#cotizaciones">
+                        <i class="fas fa-file-invoice"></i>
+                        <span>Cotizaciones</span>
+                    </a>
+                </li>
+                <li data-section="nueva">
+                    <a href="#nueva">
+                        <i class="fas fa-plus-circle"></i>
+                        <span>Nueva Cotización</span>
+                    </a>
+                </li>
+                <li data-section="reportes">
+                    <a href="#reportes">
+                        <i class="fas fa-chart-bar"></i>
+                        <span>Reportes</span>
+                    </a>
+                </li>
+            </ul>
+        </nav>
+
+        <div class="sidebar-footer">
+            <div class="user-info">
+                <div class="user-avatar">
+                    <i class="fas fa-user"></i>
+                </div>
+                <div class="user-details">
+                    <span class="user-name">{{ user_name }}</span>
+                    <span class="user-role">Usuario</span>
+                </div>
+            </div>
+            <a href="{{ url_for('logout') }}" class="logout-btn">
+                <i class="fas fa-sign-out-alt"></i>
+                <span>Cerrar Sesión</span>
+            </a>
+        </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <!-- Header -->
+        <header class="main-header">
+            <div class="header-left">
+                <button class="mobile-menu-btn" id="mobileMenuBtn">
+                    <i class="fas fa-bars"></i>
+                </button>
+                <div class="search-box">
+                    <i class="fas fa-search"></i>
+                    <input type="text" placeholder="Buscar cotizaciones..." id="searchInput">
+                </div>
+            </div>
+            <div class="header-right">
+                <button class="header-btn queue-btn" id="queueBtn" title="Cola de sincronización" style="display: none;">
+                    <i class="fas fa-clock"></i>
+                    <span class="badge queue-badge" id="queueBadge">0</span>
+                </button>
+                <button class="header-btn notification-btn">
+                    <i class="fas fa-bell"></i>
+                    <span class="badge">3</span>
+                </button>
+                <button class="header-btn theme-toggle" id="themeToggle">
+                    <i class="fas fa-moon"></i>
+                </button>
+            </div>
+        </header>
+
+        <!-- Content Sections -->
+        <div class="content-wrapper">
+            <!-- Overview Section -->
+            <section class="content-section active" id="overview">
+                <div class="section-header">
+                    <h1>Resumen General</h1>
+                    <p>Bienvenido, {{ user_name }}. Aquí está el resumen de tu actividad.</p>
+                </div>
+
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-icon blue">
+                            <i class="fas fa-file-invoice"></i>
+                        </div>
+                        <div class="stat-info">
+                            <h3 id="totalCotizaciones">0</h3>
+                            <p>Cotizaciones Totales</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon green">
+                            <i class="fas fa-check-circle"></i>
+                        </div>
+                        <div class="stat-info">
+                            <h3 id="cotizacionesAprobadas">0</h3>
+                            <p>Aprobadas</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon orange">
+                            <i class="fas fa-clock"></i>
+                        </div>
+                        <div class="stat-info">
+                            <h3 id="cotizacionesPendientes">0</h3>
+                            <p>Pendientes</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon purple">
+                            <i class="fas fa-dollar-sign"></i>
+                        </div>
+                        <div class="stat-info">
+                            <h3 id="valorTotal">$0</h3>
+                            <p>Valor Total</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="recent-section">
+                    <div class="section-title">
+                        <h2>Cotizaciones Recientes</h2>
+                        <button class="btn-link" onclick="showSection('cotizaciones')">Ver todas</button>
+                    </div>
+                    <div class="table-container">
+                        <table class="data-table" id="recentTable">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Producto</th>
+                                    <th>Cantidad</th>
+                                    <th>Precio Est.</th>
+                                    <th>Estado</th>
+                                    <th>Fecha</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- Se llena dinámicamente -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Cotizaciones Section -->
+            <section class="content-section" id="cotizaciones">
+                <div class="section-header">
+                    <h1>Mis Cotizaciones</h1>
+                    <button class="btn-primary" onclick="showSection('nueva')">
+                        <i class="fas fa-plus"></i>
+                        Nueva Cotización
+                    </button>
+                </div>
+
+                <div class="filters-bar">
+                    <div class="filter-group">
+                        <label>Estado:</label>
+                        <select id="filterEstado">
+                            <option value="">Todos</option>
+                            <option value="pendiente">Pendiente</option>
+                            <option value="aprobada">Aprobada</option>
+                            <option value="rechazada">Rechazada</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label>Ordenar por:</label>
+                        <select id="filterOrden">
+                            <option value="fecha_desc">Más reciente</option>
+                            <option value="fecha_asc">Más antiguo</option>
+                            <option value="precio_desc">Mayor precio</option>
+                            <option value="precio_asc">Menor precio</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="table-container">
+                    <table class="data-table" id="cotizacionesTable">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Producto</th>
+                                <th>Cantidad</th>
+                                <th>Empaquetado</th>
+                                <th>Precio Est.</th>
+                                <th>Estado</th>
+                                <th>Fecha</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- Se llena dinámicamente -->
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="pagination" id="pagination">
+                    <!-- Se llena dinámicamente -->
+                </div>
+            </section>
+
+            <!-- Nueva Cotización Section -->
+            <section class="content-section" id="nueva">
+                <div class="section-header">
+                    <h1 id="formTitle">Nueva Cotización</h1>
+                    <button class="btn-secondary" onclick="resetForm()">
+                        <i class="fas fa-redo"></i>
+                        Limpiar
+                    </button>
+                </div>
+
+                <div class="form-card">
+                    <form id="cotizacionForm" class="cotizacion-form">
+                        <input type="hidden" id="cotizacionId" value="">
+                        
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="producto">
+                                    <i class="fas fa-box"></i>
+                                    Producto <span class="required">*</span>
+                                </label>
+                                <input 
+                                    type="text" 
+                                    id="producto" 
+                                    name="producto" 
+                                    placeholder="Nombre del producto"
+                                    required
+                                >
+                            </div>
+                            <div class="form-group">
+                                <label for="cantidad">
+                                    <i class="fas fa-hashtag"></i>
+                                    Cantidad <span class="required">*</span>
+                                </label>
+                                <input 
+                                    type="number" 
+                                    id="cantidad" 
+                                    name="cantidad" 
+                                    placeholder="0"
+                                    min="1"
+                                    required
+                                >
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="empaquetado">
+                                    <i class="fas fa-box-open"></i>
+                                    Empaquetado Deseado
+                                </label>
+                                <select id="empaquetado" name="empaquetadoDeseado">
+                                    <option value="">Seleccionar...</option>
+                                    <option value="Individual">Individual</option>
+                                    <option value="Caja">Caja</option>
+                                    <option value="Pallet">Pallet</option>
+                                    <option value="Granel">Granel</option>
+                                    <option value="Personalizado">Personalizado</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="precio">
+                                    <i class="fas fa-dollar-sign"></i>
+                                    Precio Estimado
+                                </label>
+                                <div class="input-with-icon">
+                                    <span class="input-prefix">$</span>
+                                    <input 
+                                        type="number" 
+                                        id="precio" 
+                                        name="precioEstimado" 
+                                        placeholder="0.00"
+                                        step="0.01"
+                                        min="0"
+                                    >
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="estado">
+                                    <i class="fas fa-flag"></i>
+                                    Estado
+                                </label>
+                                <select id="estado" name="estado">
+                                    <option value="pendiente">Pendiente</option>
+                                    <option value="aprobada">Aprobada</option>
+                                    <option value="rechazada">Rechazada</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="form-group full-width">
+                            <label for="notas">
+                                <i class="fas fa-sticky-note"></i>
+                                Notas Adicionales
+                            </label>
+                            <textarea 
+                                id="notas" 
+                                name="notas" 
+                                rows="4" 
+                                placeholder="Escribe cualquier nota o detalle adicional..."
+                            ></textarea>
+                        </div>
+
+                        <div class="form-actions">
+                            <button type="button" class="btn-secondary" onclick="showSection('cotizaciones')">
+                                <i class="fas fa-times"></i>
+                                Cancelar
+                            </button>
+                            <button type="submit" class="btn-primary">
+                                <i class="fas fa-save"></i>
+                                <span id="submitBtnText">Guardar Cotización</span>
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </section>
+
+            <!-- Reportes Section -->
+            <section class="content-section" id="reportes">
+                <div class="section-header">
+                    <h1>Reportes</h1>
+                    <button class="btn-primary" onclick="exportarReporte()">
+                        <i class="fas fa-download"></i>
+                        Exportar
+                    </button>
+                </div>
+
+                <div class="reports-grid">
+                    <div class="report-card">
+                        <div class="report-header">
+                            <h3>Cotizaciones por Estado</h3>
+                        </div>
+                        <div class="report-content">
+                            <canvas id="estadoChart"></canvas>
+                        </div>
+                    </div>
+                    <div class="report-card">
+                        <div class="report-header">
+                            <h3>Valor por Mes</h3>
+                        </div>
+                        <div class="report-content">
+                            <canvas id="valorChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="summary-cards">
+                    <div class="summary-card">
+                        <i class="fas fa-chart-line"></i>
+                        <div class="summary-info">
+                            <h4>Promedio por Cotización</h4>
+                            <p id="promedioValor">$0.00</p>
+                        </div>
+                    </div>
+                    <div class="summary-card">
+                        <i class="fas fa-trophy"></i>
+                        <div class="summary-info">
+                            <h4>Producto Más Cotizado</h4>
+                            <p id="productoTop">-</p>
+                        </div>
+                    </div>
+                    <div class="summary-card">
+                        <i class="fas fa-percentage"></i>
+                        <div class="summary-info">
+                            <h4>Tasa de Aprobación</h4>
+                            <p id="tasaAprobacion">0%</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <!-- Modal de confirmación -->
+    <div class="modal" id="confirmModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modalTitle">Confirmar acción</h3>
+                <button class="modal-close" onclick="closeModal()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <p id="modalMessage">¿Estás seguro de que deseas realizar esta acción?</p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" onclick="closeModal()">Cancelar</button>
+                <button class="btn-danger" id="confirmBtn">Confirmar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast notifications -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <!-- Indicador de estado offline -->
+    <div class="offline-indicator" id="offlineIndicator">
+        <i class="fas fa-wifi-slash"></i>
+        <span>Sin conexión - Modo offline</span>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+    
+    <!-- Registro del Service Worker -->
+    <script>
+        // Registrar Service Worker
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', async () => {
+                try {
+                    const registration = await navigator.serviceWorker.register('/sw.js', {
+                        scope: '/'
+                    });
+                    console.log('Service Worker registrado:', registration.scope);
+                    
+                    // Verificar actualizaciones
+                    registration.addEventListener('updatefound', () => {
+                        const newWorker = registration.installing;
+                        newWorker.addEventListener('statechange', () => {
+                            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                                showToast('Nueva versión disponible. Recarga la página.', 'info');
+                            }
+                        });
+                    });
+                } catch (error) {
+                    console.error('Error al registrar Service Worker:', error);
+                }
+            });
+        }
+
+        // Detectar estado de conexión
+        function updateOnlineStatus() {
+            const indicator = document.getElementById('offlineIndicator');
+            if (navigator.onLine) {
+                indicator.classList.remove('visible');
+                document.body.classList.remove('offline-mode');
+            } else {
+                indicator.classList.add('visible');
+                document.body.classList.add('offline-mode');
+            }
+        }
+
+        window.addEventListener('online', () => {
+            updateOnlineStatus();
+            showToast('Conexión restaurada', 'success');
+            // Intentar sincronizar datos
+            if (typeof loadCotizaciones === 'function') {
+                loadCotizaciones();
+            }
+        });
+
+        window.addEventListener('offline', () => {
+            updateOnlineStatus();
+            showToast('Sin conexión - Modo offline activado', 'info');
+        });
+
+        // Verificar estado inicial
+        document.addEventListener('DOMContentLoaded', updateOnlineStatus);
+    </script>
+</body>
+</html>
