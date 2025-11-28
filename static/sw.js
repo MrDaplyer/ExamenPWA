@@ -2,10 +2,10 @@
 // Service Worker - CotizaPro PWA
 // =============================================
 
-const CACHE_NAME = 'cotizapro-v2';
-const STATIC_CACHE = 'cotizapro-static-v2';
-const DYNAMIC_CACHE = 'cotizapro-dynamic-v2';
-const API_CACHE = 'cotizapro-api-v2';
+const CACHE_NAME = 'cotizapro-v7';
+const STATIC_CACHE = 'cotizapro-static-v7';
+const DYNAMIC_CACHE = 'cotizapro-dynamic-v7';
+const API_CACHE = 'cotizapro-api-v7';
 
 // Archivos esenciales para cachear
 const STATIC_ASSETS = [

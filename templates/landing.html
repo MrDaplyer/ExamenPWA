@@ -15,6 +15,11 @@
             padding: 0;
             box-sizing: border-box;
         }
+        
+        html {
+            overflow-x: hidden;
+            width: 100%;
+        }
 
         :root {
             --primary: #667eea;
@@ -32,6 +37,8 @@
             color: var(--dark);
             line-height: 1.6;
             overflow-x: hidden;
+            width: 100%;
+            max-width: 100vw;
         }
 
         /* Navbar */
@@ -76,6 +83,35 @@
             display: flex;
             align-items: center;
             gap: 30px;
+        }
+        
+        .nav-links .install-pwa-btn {
+            display: none;
+            padding: 10px 20px;
+            background: rgba(72, 187, 120, 0.1);
+            color: #48bb78;
+            border: 2px solid #48bb78;
+            border-radius: 50px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .nav-links .install-pwa-btn:hover {
+            background: #48bb78;
+            color: white;
+            transform: translateY(-2px);
+        }
+        
+        .nav-links .install-pwa-btn i {
+            animation: bounce 2s infinite;
+        }
+        
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-4px); }
         }
 
         .nav-links a {
@@ -437,6 +473,48 @@
                 display: none;
             }
         }
+        
+        @media (min-width: 768px) and (max-width: 1024px) {
+            .navbar {
+                padding: 20px 3%;
+            }
+            
+            .hero {
+                padding: 120px 3% 80px;
+            }
+            
+            .hero-text h1 {
+                font-size: 2.8rem;
+            }
+            
+            .features,
+            .cta {
+                padding: 80px 3%;
+            }
+            
+            .stats {
+                padding: 60px 3%;
+            }
+            
+            .features-grid {
+                grid-template-columns: repeat(2, 1fr);
+                gap: 24px;
+            }
+            
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+                gap: 30px;
+            }
+            
+            .footer {
+                padding: 50px 3% 25px;
+            }
+            
+            .footer-content {
+                grid-template-columns: 1fr 1fr;
+                gap: 30px;
+            }
+        }
 
         @media (max-width: 480px) {
             .hero-text h1 {
@@ -470,6 +548,10 @@
             <span>CotizaPro</span>
         </a>
         <div class="nav-links">
+            <button class="install-pwa-btn" id="installPwaBtn">
+                <i class="fas fa-download"></i>
+                Instalar App
+            </button>
             <a href="#features">Características</a>
             <a href="#stats">Estadísticas</a>
             <a href="{{ url_for('login') }}" class="btn btn-outline">Iniciar Sesión</a>
@@ -638,6 +720,9 @@
     </footer>
 
     <script>
+        // Variable para almacenar el evento de instalación
+        let deferredPrompt;
+
         // Navbar scroll effect
         window.addEventListener('scroll', function() {
             const navbar = document.getElementById('navbar');
@@ -657,6 +742,59 @@
                     target.scrollIntoView({ behavior: 'smooth', block: 'start' });
                 }
             });
+        });
+
+        // PWA Install functionality
+        window.addEventListener('beforeinstallprompt', (e) => {
+            // Prevenir que el mini-infobar aparezca en móvil
+            e.preventDefault();
+            // Guardar el evento para usarlo después
+            deferredPrompt = e;
+            // Mostrar el botón de instalación
+            const installBtn = document.getElementById('installPwaBtn');
+            if (installBtn) {
+                installBtn.style.display = 'flex';
+            }
+        });
+
+        // Manejar el clic en el botón de instalación
+        document.addEventListener('DOMContentLoaded', () => {
+            const installBtn = document.getElementById('installPwaBtn');
+            if (installBtn) {
+                installBtn.addEventListener('click', async () => {
+                    if (!deferredPrompt) {
+                        alert('La aplicación ya está instalada o no se puede instalar en este navegador');
+                        return;
+                    }
+                    
+                    // Mostrar el prompt de instalación
+                    deferredPrompt.prompt();
+                    
+                    // Esperar a que el usuario responda al prompt
+                    const { outcome } = await deferredPrompt.userChoice;
+                    console.log(`Usuario respondió al prompt de instalación: ${outcome}`);
+                    
+                    if (outcome === 'accepted') {
+                        console.log('Usuario aceptó instalar la PWA');
+                    } else {
+                        console.log('Usuario rechazó instalar la PWA');
+                    }
+                    
+                    // Limpiar el prompt usado
+                    deferredPrompt = null;
+                    installBtn.style.display = 'none';
+                });
+            }
+        });
+
+        // Detectar cuando la PWA se ha instalado
+        window.addEventListener('appinstalled', () => {
+            console.log('PWA instalada exitosamente');
+            deferredPrompt = null;
+            const installBtn = document.getElementById('installPwaBtn');
+            if (installBtn) {
+                installBtn.style.display = 'none';
+            }
         });
     </script>
 </body>

@@ -52,6 +52,11 @@
     box-sizing: border-box;
 }
 
+html {
+    overflow-x: hidden;
+    width: 100%;
+}
+
 body {
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     background: var(--bg-color);
@@ -60,11 +65,32 @@ body {
     line-height: 1.6;
     overflow-x: hidden;
     width: 100%;
+    max-width: 100vw;
 }
 
 /* =============================================
    Sidebar
    ============================================= */
+   
+/* Overlay para móvil */
+.sidebar-overlay {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 99;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.sidebar-overlay.active {
+    display: block;
+    opacity: 1;
+}
+
 .sidebar {
     width: var(--sidebar-width);
     height: 100vh;
@@ -244,14 +270,39 @@ body {
     color: white;
 }
 
+/* Install Button */
+.install-btn {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    background: rgba(72, 187, 120, 0.1);
+    border-radius: var(--radius-md);
+    color: var(--success-color);
+    text-decoration: none;
+    font-weight: 500;
+    transition: var(--transition);
+    border: none;
+    width: 100%;
+    cursor: pointer;
+    margin-bottom: 10px;
+    text-align: left;
+    font-size: 0.9rem;
+}
+
+.install-btn:hover {
+    background: var(--success-color);
+    color: white;
+}
+
 /* =============================================
    Main Content
    ============================================= */
 .main-content {
     margin-left: 0;
     transition: var(--transition);
-    width: 100%;
-    max-width: 100vw;
+    width: auto;
+    max-width: 100%;
 }
 
 .sidebar.collapsed ~ .main-content {
@@ -266,38 +317,46 @@ body {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0 15px;
+    padding: 0 12px;
     position: sticky;
     top: 0;
     z-index: 50;
+    width: 100%;
+    box-sizing: border-box;
 }
 
 .header-left {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 10px;
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
 }
 
 .mobile-menu-btn {
     display: block;
     background: none;
     border: none;
-    font-size: 1.3rem;
+    font-size: 1.2rem;
     color: var(--text-secondary);
     cursor: pointer;
     padding: 8px;
+    flex-shrink: 0;
 }
 
 .search-box {
     display: none;
     align-items: center;
-    gap: 12px;
+    gap: 10px;
     background: var(--bg-color);
-    padding: 10px 16px;
+    padding: 8px 14px;
     border-radius: var(--radius-lg);
     border: 2px solid transparent;
     transition: var(--transition);
-    min-width: 200px;
+    min-width: 150px;
+    max-width: 250px;
+    flex: 1;
 }
 
 .search-box:focus-within {
@@ -325,12 +384,13 @@ body {
 .header-right {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 8px;
+    flex-shrink: 0;
 }
 
 .header-btn {
-    width: 36px;
-    height: 36px;
+    width: 32px;
+    height: 32px;
     border: none;
     background: var(--bg-color);
     border-radius: 50%;
@@ -341,7 +401,8 @@ body {
     color: var(--text-secondary);
     position: relative;
     transition: var(--transition);
-    font-size: 0.9rem;
+    font-size: 0.85rem;
+    flex-shrink: 0;
 }
 
 .header-btn:hover {
@@ -386,6 +447,36 @@ body {
 
 .queue-btn:hover i {
     animation: spin 0.8s linear infinite;
+}
+
+/* Install PWA Button */
+.install-pwa-btn {
+    background: rgba(72, 187, 120, 0.1);
+    color: var(--success-color);
+    animation: bounceIn 0.5s ease;
+}
+
+.install-pwa-btn:hover {
+    background: var(--success-color);
+    color: white;
+    animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes bounceIn {
+    0% {
+        opacity: 0;
+        transform: scale(0.3);
+    }
+    50% {
+        opacity: 1;
+        transform: scale(1.05);
+    }
+    70% {
+        transform: scale(0.9);
+    }
+    100% {
+        transform: scale(1);
+    }
 }
 
 /* Content Wrapper */
@@ -515,11 +606,15 @@ body {
     justify-content: space-between;
     margin-bottom: 12px;
     gap: 8px;
+    flex-wrap: nowrap;
+    width: 100%;
 }
 
 .section-title h2 {
     font-size: 0.95rem;
     font-weight: 600;
+    flex-shrink: 1;
+    min-width: 0;
 }
 
 .btn-link {
@@ -531,6 +626,8 @@ body {
     font-size: 0.8rem;
     transition: var(--transition);
     white-space: nowrap;
+    flex-shrink: 0;
+    padding: 4px 8px;
 }
 
 .btn-link:hover {
@@ -673,6 +770,121 @@ body {
 
 .queued-row:hover {
     background: rgba(102, 126, 234, 0.08) !important;
+}
+
+/* Pending Delete Row Style */
+.pending-delete-row {
+    background: rgba(245, 101, 101, 0.05);
+}
+
+.pending-delete-row:hover {
+    background: rgba(245, 101, 101, 0.1) !important;
+}
+
+/* Delete Pending Icon (Red Clock) */
+.queue-icon.delete-pending {
+    background: rgba(245, 101, 101, 0.15);
+    color: var(--error-color);
+}
+
+.queue-icon.delete-pending:hover {
+    background: var(--error-color);
+    color: white;
+}
+
+.queue-icon.delete-pending i {
+    animation: pulse 1.5s ease-in-out infinite;
+}
+
+/* Status Badge for Pending Delete */
+.status-badge.pending-delete {
+    background: rgba(245, 101, 101, 0.15);
+    color: var(--error-color);
+}
+
+.status-badge.pending-delete i {
+    margin-right: 4px;
+    animation: pulse 1.5s ease-in-out infinite;
+}
+
+/* Cancel Delete Button */
+.btn-action.cancel-delete {
+    background: rgba(237, 137, 54, 0.1);
+    color: var(--warning-color);
+}
+
+.btn-action.cancel-delete:hover {
+    background: var(--warning-color);
+    color: white;
+}
+
+/* Pending Edit Row Style */
+.pending-edit-row {
+    background: rgba(237, 137, 54, 0.05);
+}
+
+.pending-edit-row:hover {
+    background: rgba(237, 137, 54, 0.1) !important;
+}
+
+/* Edit Pending Icon (Orange Clock) */
+.queue-icon.edit-pending {
+    background: rgba(237, 137, 54, 0.15);
+    color: var(--warning-color);
+}
+
+.queue-icon.edit-pending:hover {
+    background: var(--warning-color);
+    color: white;
+}
+
+.queue-icon.edit-pending i {
+    animation: pulse 1.5s ease-in-out infinite;
+}
+
+/* Status Badge for Pending Edit */
+.status-badge.pending-edit {
+    background: rgba(237, 137, 54, 0.15);
+    color: var(--warning-color);
+}
+
+.status-badge.pending-edit i {
+    margin-right: 4px;
+    animation: pulse 1.5s ease-in-out infinite;
+}
+
+/* Cancel Edit Button */
+.btn-action.cancel-edit {
+    background: rgba(237, 137, 54, 0.1);
+    color: var(--warning-color);
+}
+
+.btn-action.cancel-edit:hover {
+    background: var(--warning-color);
+    color: white;
+}
+
+/* Queue Button with Deletes */
+.queue-btn.has-deletes {
+    background: rgba(245, 101, 101, 0.1);
+}
+
+.queue-btn.has-deletes .queue-badge {
+    background: var(--error-color);
+}
+
+/* Queue Button with Edits */
+.queue-btn.has-edits {
+    background: rgba(237, 137, 54, 0.1);
+}
+
+.queue-btn.has-edits .queue-badge {
+    background: var(--warning-color);
+}
+
+/* Priority: Deletes over Edits */
+.queue-btn.has-deletes.has-edits {
+    background: linear-gradient(135deg, rgba(245, 101, 101, 0.1), rgba(237, 137, 54, 0.1));
 }
 
 @keyframes pulse {
@@ -1227,10 +1439,150 @@ body {
 @media (max-width: 1024px) {
     .sidebar {
         transform: translateX(-100%);
+        width: var(--sidebar-width);
     }
 
     .sidebar.active {
         transform: translateX(0);
+        width: var(--sidebar-width);
+    }
+    
+    /* Asegurar que el sidebar muestre todo el contenido cuando está activo */
+    .sidebar.active .sidebar-header span,
+    .sidebar.active .sidebar-nav span,
+    .sidebar.active .user-details,
+    .sidebar.active .logout-btn span {
+        display: block;
+    }
+    
+    .sidebar.active .logo {
+        justify-content: flex-start;
+    }
+    
+    .sidebar.active .sidebar-nav a {
+        justify-content: flex-start;
+    }
+    
+    .main-content {
+        margin-left: 0;
+    }
+    
+    /* Overlay cuando el sidebar está abierto */
+    .sidebar-overlay {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.5);
+        z-index: 99;
+    }
+    
+    .sidebar-overlay.active {
+        display: block;
+    }
+}
+
+/* =============================================
+   LAPTOP PEQUEÑO (min-width: 768px y max-width: 1024px)
+   ============================================= */
+@media (min-width: 768px) and (max-width: 1024px) {
+    .main-content {
+        margin-left: 0;
+        width: 100%;
+    }
+    
+    .content-wrapper {
+        padding: 20px;
+        max-width: 100%;
+    }
+    
+    .section-header h1 {
+        font-size: 1.6rem;
+    }
+    
+    .stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 16px;
+    }
+    
+    .stat-card {
+        padding: 20px;
+    }
+    
+    .data-table {
+        font-size: 0.85rem;
+    }
+    
+    .form-row {
+        grid-template-columns: 1fr;
+    }
+    
+    .reports-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .search-box {
+        max-width: 250px;
+    }
+}
+
+/* =============================================
+   EXTRA SMALL SCREENS (max-width: 380px)
+   ============================================= */
+@media (max-width: 380px) {
+    .main-header {
+        padding: 0 8px;
+    }
+    
+    .header-btn {
+        width: 28px;
+        height: 28px;
+        font-size: 0.75rem;
+    }
+    
+    .header-right {
+        gap: 4px;
+    }
+    
+    .header-left {
+        gap: 6px;
+    }
+    
+    .mobile-menu-btn {
+        padding: 6px;
+        font-size: 1rem;
+    }
+    
+    .content-wrapper {
+        padding: 10px;
+    }
+    
+    .section-header h1 {
+        font-size: 1.2rem;
+    }
+    
+    .stats-grid {
+        gap: 8px;
+    }
+    
+    .stat-card {
+        padding: 10px;
+    }
+    
+    .stat-icon {
+        width: 36px;
+        height: 36px;
+        font-size: 1rem;
+    }
+    
+    .stat-info h3 {
+        font-size: 1.1rem;
+    }
+    
+    .stat-info p {
+        font-size: 0.65rem;
     }
 }
 
@@ -1370,6 +1722,17 @@ body {
 
     .search-box {
         display: flex;
+        max-width: 280px;
+    }
+    
+    .header-btn {
+        width: 38px;
+        height: 38px;
+        font-size: 0.95rem;
+    }
+    
+    .header-right {
+        gap: 10px;
     }
 
     .reports-grid {
@@ -1537,11 +1900,22 @@ body {
 
     .search-box {
         min-width: 300px;
+        max-width: 350px;
     }
 
     .main-header {
         height: var(--header-height);
         padding: 0 30px;
+    }
+    
+    .header-btn {
+        width: 42px;
+        height: 42px;
+        font-size: 1rem;
+    }
+    
+    .header-right {
+        gap: 12px;
     }
 
     .form-card {

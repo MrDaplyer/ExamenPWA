@@ -13,6 +13,9 @@
     <link rel="manifest" href="/manifest.json">
 </head>
 <body>
+    <!-- Overlay para cerrar sidebar en móvil -->
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+    
     <!-- Sidebar -->
     <aside class="sidebar" id="sidebar">
         <div class="sidebar-header">
@@ -64,6 +67,10 @@
                     <span class="user-role">Usuario</span>
                 </div>
             </div>
+            <button class="install-btn" id="installPwaBtn">
+                <i class="fas fa-download"></i>
+                <span>Instalar App</span>
+            </button>
             <a href="{{ url_for('logout') }}" class="logout-btn">
                 <i class="fas fa-sign-out-alt"></i>
                 <span>Cerrar Sesión</span>
@@ -85,6 +92,7 @@
                 </div>
             </div>
             <div class="header-right">
+
                 <button class="header-btn queue-btn" id="queueBtn" title="Cola de sincronización" style="display: none;">
                     <i class="fas fa-clock"></i>
                     <span class="badge queue-badge" id="queueBadge">0</span>
@@ -429,13 +437,30 @@
     <div class="offline-indicator" id="offlineIndicator">
         <i class="fas fa-wifi-slash"></i>
         <span>Sin conexión - Modo offline</span>
+        <button onclick="this.parentElement.classList.remove('visible')" style="background:none;border:none;color:white;margin-left:10px;cursor:pointer;padding:0;"><i class="fas fa-times"></i></button>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
     
-    <!-- Registro del Service Worker -->
+    <!-- Registro del Service Worker y PWA Install -->
     <script>
+        // Variable para almacenar el evento de instalación
+        let deferredPrompt = null;
+        let installButtonClicked = false;
+
+        // Detectar si es iOS
+        const isIos = () => {
+            const userAgent = window.navigator.userAgent.toLowerCase();
+            return /iphone|ipad|ipod/.test(userAgent);
+        };
+
+        // Detectar si ya está instalado (standalone)
+        const isInStandaloneMode = () => {
+            return ('standalone' in window.navigator && window.navigator.standalone) || 
+                   (window.matchMedia('(display-mode: standalone)').matches);
+        };
+
         // Registrar Service Worker
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', async () => {
@@ -459,6 +484,122 @@
                 }
             });
         }
+
+        // Manejar el evento beforeinstallprompt para el botón de instalación PWA
+        window.addEventListener('beforeinstallprompt', (e) => {
+            // Prevenir que el mini-infobar aparezca en móvil
+            e.preventDefault();
+            // Guardar el evento para usarlo después
+            deferredPrompt = e;
+            console.log('✅ Evento beforeinstallprompt capturado - PWA lista para instalar');
+            
+            // Mostrar el botón de instalación
+            const installBtn = document.getElementById('installPwaBtn');
+            if (installBtn) {
+                installBtn.style.display = 'flex';
+                installBtn.classList.add('pwa-ready');
+            }
+        });
+
+        // Función para mostrar el prompt de instalación
+        async function showInstallPrompt() {
+            if (!deferredPrompt) {
+                console.log('❌ No hay prompt de instalación disponible');
+                return false;
+            }
+
+            console.log('📲 Mostrando prompt de instalación...');
+            
+            // Mostrar el prompt nativo
+            deferredPrompt.prompt();
+            
+            // Esperar la respuesta del usuario
+            const { outcome } = await deferredPrompt.userChoice;
+            console.log(`Usuario eligió: ${outcome}`);
+            
+            // Limpiar el prompt usado
+            deferredPrompt = null;
+            
+            return outcome === 'accepted';
+        }
+
+        // Manejar el clic en el botón de instalación
+        document.addEventListener('DOMContentLoaded', () => {
+            const installBtn = document.getElementById('installPwaBtn');
+            
+            // Solo ocultar si ya está instalado
+            if (isInStandaloneMode()) {
+                if (installBtn) installBtn.style.display = 'none';
+                console.log('📱 App ya está instalada (modo standalone)');
+                return;
+            }
+
+            if (installBtn) {
+                installBtn.addEventListener('click', async (e) => {
+                    e.preventDefault();
+                    
+                    // Evitar múltiples clics
+                    if (installButtonClicked) return;
+                    installButtonClicked = true;
+                    
+                    console.log('🔘 Botón de instalación clickeado');
+                    console.log('Estado de deferredPrompt:', deferredPrompt ? 'disponible' : 'no disponible');
+                    
+                    // 1. Si tenemos el evento capturado - mostrar prompt nativo
+                    if (deferredPrompt) {
+                        try {
+                            const accepted = await showInstallPrompt();
+                            if (accepted) {
+                                installBtn.style.display = 'none';
+                                showToast('¡Instalando aplicación!', 'success');
+                            }
+                        } catch (error) {
+                            console.error('Error al mostrar prompt:', error);
+                        }
+                    } 
+                    // 2. Si es iOS
+                    else if (isIos()) {
+                        showToast('Para instalar: pulsa el botón "Compartir" (📤) y selecciona "Agregar a pantalla de inicio"', 'info');
+                    } 
+                    // 3. Fallback - dar instrucciones para Brave/otros navegadores
+                    else {
+                        // Verificar si es HTTPS
+                        if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
+                            showToast('⚠️ La instalación de PWA requiere HTTPS. Usa HTTPS para instalar la app.', 'warning');
+                        } else {
+                            showToast('En Brave: toca el menú (⋮) y selecciona "Instalar aplicación" o "Agregar a pantalla de inicio"', 'info');
+                        }
+                    }
+                    
+                    // Resetear después de un tiempo
+                    setTimeout(() => {
+                        installButtonClicked = false;
+                    }, 2000);
+                });
+            }
+            
+            // Verificar estado de conexión inicial
+            updateOnlineStatus();
+            
+            // Log de diagnóstico
+            console.log('🔍 Diagnóstico PWA:');
+            console.log('  - Protocolo:', location.protocol);
+            console.log('  - Service Worker soportado:', 'serviceWorker' in navigator);
+            console.log('  - beforeinstallprompt disponible:', !!deferredPrompt);
+            console.log('  - Modo standalone:', isInStandaloneMode());
+            console.log('  - Es iOS:', isIos());
+        });
+
+        // Detectar cuando la PWA se ha instalado
+        window.addEventListener('appinstalled', (e) => {
+            console.log('🎉 PWA instalada exitosamente');
+            showToast('¡Aplicación instalada! Ahora puedes usarla desde tu pantalla de inicio.', 'success');
+            deferredPrompt = null;
+            const installBtn = document.getElementById('installPwaBtn');
+            if (installBtn) {
+                installBtn.style.display = 'none';
+            }
+        });
 
         // Detectar estado de conexión
         function updateOnlineStatus() {
@@ -485,9 +626,6 @@
             updateOnlineStatus();
             showToast('Sin conexión - Modo offline activado', 'info');
         });
-
-        // Verificar estado inicial
-        document.addEventListener('DOMContentLoaded', updateOnlineStatus);
     </script>
 </body>
 </html>

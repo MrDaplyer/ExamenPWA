@@ -34,12 +34,20 @@
     box-sizing: border-box;
 }
 
+html {
+    overflow-x: hidden;
+    width: 100%;
+}
+
 body {
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     background: var(--bg-color);
     min-height: 100vh;
     color: var(--text-primary);
     line-height: 1.6;
+    overflow-x: hidden;
+    width: 100%;
+    max-width: 100vw;
 }
 
 /* Auth Container */
@@ -527,6 +535,44 @@ body {
         padding: 30px 20px;
     }
 
+    .form-row {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (min-width: 768px) and (max-width: 968px) {
+    .auth-left {
+        display: flex;
+        min-height: 40vh;
+        padding: 30px;
+    }
+    
+    .auth-left-content h1 {
+        font-size: 1.8rem;
+    }
+    
+    .auth-left-content p {
+        font-size: 0.9rem;
+    }
+    
+    .auth-right {
+        padding: 40px 30px;
+    }
+    
+    .auth-form-container {
+        max-width: 500px;
+    }
+    
+    .auth-form-container.register-form {
+        max-width: 600px;
+    }
+}
+
+@media (min-width: 600px) and (max-width: 767px) {
+    .auth-right {
+        padding: 35px 25px;
+    }
+    
     .form-row {
         grid-template-columns: 1fr;
     }

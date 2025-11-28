@@ -7,6 +7,8 @@ let cotizaciones = [];
 let currentPage = 1;
 const itemsPerPage = 10;
 let pendingQueue = []; // Cola de cotizaciones pendientes de sincronizar
+let deleteQueue = []; // Cola de eliminaciones pendientes
+let editQueue = []; // Cola de ediciones pendientes
 let isOnline = navigator.onLine;
 
 // =============================================
@@ -30,6 +32,7 @@ function initializeSidebar() {
     const sidebarToggle = document.getElementById('sidebarToggle');
     const mobileMenuBtn = document.getElementById('mobileMenuBtn');
     const sidebar = document.getElementById('sidebar');
+    const sidebarOverlay = document.getElementById('sidebarOverlay');
 
     if (sidebarToggle) {
         sidebarToggle.addEventListener('click', function() {
@@ -41,11 +44,22 @@ function initializeSidebar() {
     if (mobileMenuBtn) {
         mobileMenuBtn.addEventListener('click', function() {
             sidebar.classList.toggle('active');
+            if (sidebarOverlay) {
+                sidebarOverlay.classList.toggle('active');
+            }
+        });
+    }
+    
+    // Cerrar sidebar al hacer clic en el overlay
+    if (sidebarOverlay) {
+        sidebarOverlay.addEventListener('click', function() {
+            sidebar.classList.remove('active');
+            sidebarOverlay.classList.remove('active');
         });
     }
 
-    // Restaurar estado del sidebar
-    if (localStorage.getItem('sidebarCollapsed') === 'true') {
+    // Restaurar estado del sidebar (solo en desktop)
+    if (window.innerWidth > 1024 && localStorage.getItem('sidebarCollapsed') === 'true') {
         sidebar.classList.add('collapsed');
     }
 
@@ -54,6 +68,9 @@ function initializeSidebar() {
         if (window.innerWidth <= 1024) {
             if (!sidebar.contains(e.target) && !mobileMenuBtn.contains(e.target)) {
                 sidebar.classList.remove('active');
+                if (sidebarOverlay) {
+                    sidebarOverlay.classList.remove('active');
+                }
             }
         }
     });
@@ -158,11 +175,11 @@ function initializeForm() {
 }
 
 function saveCotizacion() {
-    console.log('[Queue Debug] saveCotizacion iniciado');
-    console.log('[Queue Debug] isOnline:', isOnline);
+    console.log('[Queue] saveCotizacion iniciado');
+    console.log('[Queue] isOnline:', isOnline);
     
     const cotizacionId = document.getElementById('cotizacionId').value;
-    console.log('[Queue Debug] cotizacionId:', cotizacionId);
+    console.log('[Queue] cotizacionId:', cotizacionId);
     
     const formData = {
         producto: document.getElementById('producto').value,
@@ -173,17 +190,21 @@ function saveCotizacion() {
         estado: document.getElementById('estado').value
     };
     
-    console.log('[Queue Debug] formData:', formData);
+    console.log('[Queue] formData:', formData);
 
     if (!formData.producto || !formData.cantidad) {
         showToast('Por favor completa los campos requeridos', 'error');
         return;
     }
 
-    // Si es edición, no permitir offline por ahora (solo nuevas cotizaciones)
+    // Si es edición
     if (cotizacionId) {
         if (!isOnline) {
-            showToast('Se requiere conexión para editar cotizaciones', 'error');
+            // Sin internet: agregar a cola de ediciones
+            addToEditQueue(cotizacionId, formData);
+            showToast('🕐 Sin conexión. Edición guardada en cola.', 'info');
+            resetForm();
+            showSection('cotizaciones');
             return;
         }
         updateCotizacionOnline(cotizacionId, formData);
@@ -260,7 +281,12 @@ function updateCotizacionOnline(cotizacionId, formData) {
         },
         body: JSON.stringify(formData)
     })
-    .then(response => response.json())
+    .then(response => {
+        if (!response.ok) {
+            throw new Error('Error del servidor: ' + response.status);
+        }
+        return response.json();
+    })
     .then(data => {
         if (data.success || data.id) {
             showToast('Cotización actualizada correctamente', 'success');
@@ -272,8 +298,12 @@ function updateCotizacionOnline(cotizacionId, formData) {
         }
     })
     .catch(error => {
-        console.error('Error:', error);
-        showToast('Error de conexión', 'error');
+        console.log('[EditQueue] Error de conexión, agregando a cola:', error.message);
+        // Si falla, agregar a cola de ediciones
+        addToEditQueue(cotizacionId, formData);
+        showToast('🕐 Sin conexión. Edición guardada en cola.', 'info');
+        resetForm();
+        showSection('cotizaciones');
     });
 }
 
@@ -307,26 +337,357 @@ function deleteCotizacion(id) {
         'Eliminar Cotización',
         '¿Estás seguro de que deseas eliminar esta cotización? Esta acción no se puede deshacer.',
         function() {
-            fetch(`/api/cotizaciones/${id}`, {
-                method: 'DELETE'
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    showToast('Cotización eliminada correctamente', 'success');
-                    loadCotizaciones();
-                } else {
-                    showToast('Error al eliminar la cotización', 'error');
-                }
-                closeModal();
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                showToast('Error de conexión', 'error');
-                closeModal();
-            });
+            closeModal();
+            
+            // Si no hay conexión, agregar a cola de eliminación
+            if (!isOnline) {
+                addToDeleteQueue(id);
+                return;
+            }
+            
+            // Intentar eliminar online
+            deleteOnline(id);
         }
     );
+}
+
+function deleteOnline(id) {
+    // Convertir a número para consistencia
+    const numericId = parseInt(id);
+    
+    fetch(`/api/cotizaciones/${numericId}`, {
+        method: 'DELETE'
+    })
+    .then(response => {
+        if (!response.ok) {
+            throw new Error('Error del servidor: ' + response.status);
+        }
+        return response.json();
+    })
+    .then(data => {
+        if (data.success) {
+            showToast('Cotización eliminada correctamente', 'success');
+            // Remover de la lista local
+            cotizaciones = cotizaciones.filter(c => c.id !== numericId);
+            localStorage.setItem('cotizaciones_cache', JSON.stringify(cotizaciones));
+            updateStats();
+            renderRecentTable();
+            renderCotizacionesTable();
+        } else {
+            throw new Error(data.error || 'Error al eliminar');
+        }
+    })
+    .catch(error => {
+        console.log('[Delete] Error de conexión, agregando a cola:', error.message);
+        // Si falla, agregar a cola de eliminación
+        addToDeleteQueue(numericId);
+    });
+}
+
+function addToDeleteQueue(id) {
+    // Convertir a número para consistencia
+    const numericId = parseInt(id);
+    
+    console.log('[DeleteQueue] Agregando a cola de eliminación:', numericId);
+    console.log('[DeleteQueue] Cola actual:', deleteQueue);
+    
+    // Verificar que no esté ya en la cola
+    if (deleteQueue.some(qId => parseInt(qId) === numericId)) {
+        showToast('Esta cotización ya está en cola de eliminación', 'info');
+        return;
+    }
+    
+    deleteQueue.push(numericId);
+    saveDeleteQueueToStorage();
+    
+    // Marcar visualmente la cotización como pendiente de eliminar
+    const index = cotizaciones.findIndex(c => parseInt(c.id) === numericId);
+    console.log('[DeleteQueue] Index encontrado:', index);
+    
+    if (index !== -1) {
+        cotizaciones[index].pendingDelete = true;
+        localStorage.setItem('cotizaciones_cache', JSON.stringify(cotizaciones));
+        console.log('[DeleteQueue] Cotización marcada como pendingDelete');
+    }
+    
+    showToast('🕐 Sin conexión. Eliminación en cola.', 'info');
+    updateStats();
+    renderRecentTable();
+    renderCotizacionesTable();
+    updateQueueBadge();
+    
+    console.log('[DeleteQueue] Cola después de agregar:', deleteQueue);
+}
+
+function saveDeleteQueueToStorage() {
+    localStorage.setItem('cotizaciones_delete_queue', JSON.stringify(deleteQueue));
+    console.log('[DeleteQueue] Cola guardada:', deleteQueue.length, 'items');
+}
+
+function loadDeleteQueueFromStorage() {
+    const saved = localStorage.getItem('cotizaciones_delete_queue');
+    if (saved) {
+        deleteQueue = JSON.parse(saved);
+        console.log('[DeleteQueue] Cola cargada:', deleteQueue.length, 'items');
+        
+        // Marcar las cotizaciones pendientes de eliminar
+        deleteQueue.forEach(id => {
+            const numericId = parseInt(id);
+            const index = cotizaciones.findIndex(c => parseInt(c.id) === numericId);
+            if (index !== -1) {
+                cotizaciones[index].pendingDelete = true;
+            }
+        });
+        
+        // Actualizar la UI si hay items
+        if (deleteQueue.length > 0) {
+            updateStats();
+            renderRecentTable();
+            renderCotizacionesTable();
+        }
+    }
+}
+
+async function syncDeleteQueue() {
+    if (!isOnline || deleteQueue.length === 0) return;
+    
+    console.log('[DeleteQueue] Sincronizando', deleteQueue.length, 'eliminaciones...');
+    
+    const itemsToDelete = [...deleteQueue];
+    let deletedCount = 0;
+    let failedCount = 0;
+    
+    for (const id of itemsToDelete) {
+        const numericId = parseInt(id);
+        try {
+            const response = await fetch(`/api/cotizaciones/${numericId}`, {
+                method: 'DELETE'
+            });
+            
+            if (!response.ok) throw new Error('Error del servidor: ' + response.status);
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                console.log('[DeleteQueue] ✅ Eliminado:', numericId);
+                // Remover de la cola
+                deleteQueue = deleteQueue.filter(itemId => parseInt(itemId) !== numericId);
+                // Remover de cotizaciones
+                cotizaciones = cotizaciones.filter(c => parseInt(c.id) !== numericId);
+                deletedCount++;
+            } else {
+                throw new Error(data.error || 'Error desconocido');
+            }
+        } catch (error) {
+            console.error('[DeleteQueue] ❌ Error eliminando:', numericId, error);
+            failedCount++;
+        }
+    }
+    
+    saveDeleteQueueToStorage();
+    localStorage.setItem('cotizaciones_cache', JSON.stringify(cotizaciones));
+    
+    if (deletedCount > 0) {
+        showToast('🗑️ ' + deletedCount + ' cotización(es) eliminada(s)', 'success');
+    }
+    
+    if (failedCount > 0) {
+        showToast('⚠️ ' + failedCount + ' eliminación(es) fallida(s)', 'error');
+    }
+    
+    updateStats();
+    renderRecentTable();
+    renderCotizacionesTable();
+    updateQueueBadge();
+}
+
+// Cancelar eliminación pendiente
+function cancelPendingDelete(id) {
+    const numericId = parseInt(id);
+    
+    deleteQueue = deleteQueue.filter(itemId => parseInt(itemId) !== numericId);
+    saveDeleteQueueToStorage();
+    
+    const index = cotizaciones.findIndex(c => parseInt(c.id) === numericId);
+    if (index !== -1) {
+        cotizaciones[index].pendingDelete = false;
+        localStorage.setItem('cotizaciones_cache', JSON.stringify(cotizaciones));
+    }
+    
+    showToast('Eliminación cancelada', 'info');
+    updateStats();
+    renderRecentTable();
+    renderCotizacionesTable();
+    updateQueueBadge();
+}
+
+// =============================================
+// Cola de Ediciones (Edit Queue)
+// =============================================
+function addToEditQueue(id, formData) {
+    const numericId = parseInt(id);
+    
+    console.log('[EditQueue] Agregando a cola de edición:', numericId, formData);
+    
+    // Si ya existe una edición pendiente para este ID, actualizarla
+    const existingIndex = editQueue.findIndex(item => parseInt(item.id) === numericId);
+    
+    if (existingIndex !== -1) {
+        // Actualizar la edición existente con los nuevos datos
+        editQueue[existingIndex].data = formData;
+        editQueue[existingIndex].timestamp = new Date().toISOString();
+        console.log('[EditQueue] Edición actualizada en cola');
+    } else {
+        // Agregar nueva edición a la cola
+        editQueue.push({
+            id: numericId,
+            data: formData,
+            timestamp: new Date().toISOString(),
+            status: 'pending'
+        });
+        console.log('[EditQueue] Nueva edición agregada a cola');
+    }
+    
+    saveEditQueueToStorage();
+    
+    // Actualizar la cotización localmente con los nuevos datos
+    const index = cotizaciones.findIndex(c => parseInt(c.id) === numericId);
+    if (index !== -1) {
+        cotizaciones[index] = {
+            ...cotizaciones[index],
+            ...formData,
+            pendingEdit: true
+        };
+        localStorage.setItem('cotizaciones_cache', JSON.stringify(cotizaciones));
+    }
+    
+    updateStats();
+    renderRecentTable();
+    renderCotizacionesTable();
+    updateQueueBadge();
+    
+    console.log('[EditQueue] Cola después de agregar:', editQueue);
+}
+
+function saveEditQueueToStorage() {
+    localStorage.setItem('cotizaciones_edit_queue', JSON.stringify(editQueue));
+    console.log('[EditQueue] Cola guardada:', editQueue.length, 'items');
+}
+
+function loadEditQueueFromStorage() {
+    const saved = localStorage.getItem('cotizaciones_edit_queue');
+    if (saved) {
+        editQueue = JSON.parse(saved);
+        console.log('[EditQueue] Cola cargada:', editQueue.length, 'items');
+        
+        // Marcar las cotizaciones pendientes de editar
+        editQueue.forEach(item => {
+            const numericId = parseInt(item.id);
+            const index = cotizaciones.findIndex(c => parseInt(c.id) === numericId);
+            if (index !== -1) {
+                // Aplicar los datos de la edición pendiente
+                cotizaciones[index] = {
+                    ...cotizaciones[index],
+                    ...item.data,
+                    pendingEdit: true
+                };
+            }
+        });
+        
+        // Actualizar la UI si hay items
+        if (editQueue.length > 0) {
+            localStorage.setItem('cotizaciones_cache', JSON.stringify(cotizaciones));
+            updateStats();
+            renderRecentTable();
+            renderCotizacionesTable();
+        }
+    }
+}
+
+async function syncEditQueue() {
+    if (!isOnline || editQueue.length === 0) return;
+    
+    console.log('[EditQueue] Sincronizando', editQueue.length, 'ediciones...');
+    
+    const itemsToEdit = [...editQueue];
+    let editedCount = 0;
+    let failedCount = 0;
+    
+    for (const item of itemsToEdit) {
+        const numericId = parseInt(item.id);
+        try {
+            const response = await fetch(`/api/cotizaciones/${numericId}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(item.data)
+            });
+            
+            if (!response.ok) throw new Error('Error del servidor: ' + response.status);
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                console.log('[EditQueue] ✅ Editado:', numericId);
+                // Remover de la cola
+                editQueue = editQueue.filter(qItem => parseInt(qItem.id) !== numericId);
+                // Quitar marca de pendingEdit
+                const index = cotizaciones.findIndex(c => parseInt(c.id) === numericId);
+                if (index !== -1) {
+                    cotizaciones[index].pendingEdit = false;
+                }
+                editedCount++;
+            } else {
+                throw new Error(data.error || 'Error desconocido');
+            }
+        } catch (error) {
+            console.error('[EditQueue] ❌ Error editando:', numericId, error);
+            failedCount++;
+        }
+    }
+    
+    saveEditQueueToStorage();
+    localStorage.setItem('cotizaciones_cache', JSON.stringify(cotizaciones));
+    
+    if (editedCount > 0) {
+        showToast('✏️ ' + editedCount + ' cotización(es) actualizada(s)', 'success');
+    }
+    
+    if (failedCount > 0) {
+        showToast('⚠️ ' + failedCount + ' edición(es) fallida(s)', 'error');
+    }
+    
+    updateStats();
+    renderRecentTable();
+    renderCotizacionesTable();
+    updateQueueBadge();
+}
+
+// Cancelar edición pendiente
+function cancelPendingEdit(id) {
+    const numericId = parseInt(id);
+    
+    // Encontrar el item original antes de la edición
+    editQueue = editQueue.filter(item => parseInt(item.id) !== numericId);
+    saveEditQueueToStorage();
+    
+    const index = cotizaciones.findIndex(c => parseInt(c.id) === numericId);
+    if (index !== -1) {
+        cotizaciones[index].pendingEdit = false;
+        localStorage.setItem('cotizaciones_cache', JSON.stringify(cotizaciones));
+    }
+    
+    showToast('Edición cancelada. Recarga para ver datos originales.', 'info');
+    updateStats();
+    renderRecentTable();
+    renderCotizacionesTable();
+    updateQueueBadge();
+    
+    // Recargar datos del servidor si hay conexión
+    if (isOnline) {
+        loadCotizaciones();
+    }
 }
 
 // =============================================
@@ -489,9 +850,11 @@ function renderCotizacionesTable() {
     }
 
     tbody.innerHTML = paginated.map(cot => `
-        <tr data-id="${cot.id}" class="${cot.isQueued ? 'queued-row' : ''}">
+        <tr data-id="${cot.id}" class="${cot.isQueued ? 'queued-row' : ''} ${cot.pendingDelete ? 'pending-delete-row' : ''} ${cot.pendingEdit ? 'pending-edit-row' : ''}">
             <td>
                 ${cot.isQueued ? `<span class="queue-icon" title="En cola - esperando conexión" onclick="retrySyncItem('${cot.id}')"><i class="fas fa-clock"></i></span>` : ''}
+                ${cot.pendingDelete ? `<span class="queue-icon delete-pending" title="Eliminación pendiente - esperando conexión"><i class="fas fa-clock"></i></span>` : ''}
+                ${cot.pendingEdit ? `<span class="queue-icon edit-pending" title="Edición pendiente - esperando conexión"><i class="fas fa-clock"></i></span>` : ''}
                 #${cot.isQueued ? '---' : cot.id}
             </td>
             <td>${escapeHtml(cot.producto)}</td>
@@ -499,25 +862,40 @@ function renderCotizacionesTable() {
             <td>${escapeHtml(cot.empaquetadoDeseado || '-')}</td>
             <td>${formatCurrency(cot.precioEstimado)}</td>
             <td>
-                ${cot.isQueued 
-                    ? '<span class="status-badge queued"><i class="fas fa-clock"></i> En cola</span>' 
-                    : `<span class="status-badge ${cot.estado}">${capitalizeFirst(cot.estado)}</span>`
+                ${cot.pendingDelete 
+                    ? '<span class="status-badge pending-delete"><i class="fas fa-clock"></i> Eliminando...</span>'
+                    : cot.pendingEdit
+                        ? '<span class="status-badge pending-edit"><i class="fas fa-clock"></i> Editando...</span>'
+                        : cot.isQueued 
+                            ? '<span class="status-badge queued"><i class="fas fa-clock"></i> En cola</span>' 
+                            : `<span class="status-badge ${cot.estado}">${capitalizeFirst(cot.estado)}</span>`
                 }
             </td>
             <td>${formatDate(cot.fecha_creacion)}</td>
             <td>
                 <div class="action-buttons">
-                    ${cot.isQueued 
-                        ? `<button class="btn-action sync" onclick="retrySyncItem('${cot.id}')" title="Sincronizar">
-                               <i class="fas fa-sync"></i>
+                    ${cot.pendingDelete 
+                        ? `<button class="btn-action cancel-delete" onclick="cancelPendingDelete(${cot.id})" title="Cancelar eliminación">
+                               <i class="fas fa-undo"></i>
                            </button>`
-                        : `<button class="btn-action edit" onclick="editCotizacion(${cot.id})" title="Editar">
-                               <i class="fas fa-edit"></i>
+                        : cot.pendingEdit
+                            ? `<button class="btn-action cancel-edit" onclick="cancelPendingEdit(${cot.id})" title="Cancelar edición">
+                                   <i class="fas fa-undo"></i>
+                               </button>`
+                            : cot.isQueued 
+                                ? `<button class="btn-action sync" onclick="retrySyncItem('${cot.id}')" title="Sincronizar">
+                                       <i class="fas fa-sync"></i>
+                                   </button>`
+                                : `<button class="btn-action edit" onclick="editCotizacion(${cot.id})" title="Editar">
+                                       <i class="fas fa-edit"></i>
+                                   </button>`
+                    }
+                    ${cot.pendingDelete || cot.pendingEdit
+                        ? ''
+                        : `<button class="btn-action delete" onclick="${cot.isQueued ? `removeQueuedItem('${cot.id}')` : `deleteCotizacion(${cot.id})`}" title="Eliminar">
+                               <i class="fas fa-trash"></i>
                            </button>`
                     }
-                    <button class="btn-action delete" onclick="${cot.isQueued ? `removeQueuedItem('${cot.id}')` : `deleteCotizacion(${cot.id})`}" title="Eliminar">
-                        <i class="fas fa-trash"></i>
-                    </button>
                 </div>
             </td>
         </tr>
@@ -847,18 +1225,31 @@ function escapeHtml(text) {
 // Sistema de Cola Offline (Queue)
 // =============================================
 function initializeOfflineQueue() {
+    console.log('[Queue] Inicializando sistema de cola offline...');
+    
     // Cargar cola pendiente desde localStorage
     const savedQueue = localStorage.getItem('cotizaciones_queue');
     if (savedQueue) {
         pendingQueue = JSON.parse(savedQueue);
+        console.log('[Queue] Cola cargada desde localStorage:', pendingQueue.length, 'items');
         mergePendingWithCotizaciones();
     }
+    
+    // Cargar cola de eliminaciones pendientes
+    loadDeleteQueueFromStorage();
+    
+    // Cargar cola de ediciones pendientes
+    loadEditQueueFromStorage();
+
+    // Actualizar estado de conexión
+    isOnline = navigator.onLine;
+    console.log('[Queue] Estado inicial de conexión:', isOnline ? 'Online' : 'Offline');
 
     // Escuchar cambios de conexión
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
 
-    // Verificar estado inicial
+    // Actualizar UI
     updateOnlineStatus();
     updateQueueBadge();
     
@@ -866,31 +1257,58 @@ function initializeOfflineQueue() {
     const queueBtn = document.getElementById('queueBtn');
     if (queueBtn) {
         queueBtn.addEventListener('click', function() {
-            if (isOnline && pendingQueue.length > 0) {
+            const totalQueue = pendingQueue.length + deleteQueue.length + editQueue.length;
+            if (totalQueue === 0) {
+                showToast('No hay operaciones en cola', 'info');
+            } else if (isOnline) {
+                showToast('Sincronizando ' + totalQueue + ' operación(es)...', 'info');
                 syncPendingQueue();
-            } else if (!isOnline) {
-                showToast('Sin conexión. Se sincronizará automáticamente.', 'info');
+                syncDeleteQueue();
+                syncEditQueue();
+            } else {
+                showToast('Sin conexión. Se sincronizará automáticamente cuando vuelva el internet.', 'info');
             }
         });
     }
     
     // Intentar sincronizar si hay elementos en cola y estamos online
-    if (isOnline && pendingQueue.length > 0) {
-        syncPendingQueue();
+    if (isOnline && (pendingQueue.length > 0 || deleteQueue.length > 0 || editQueue.length > 0)) {
+        console.log('[Queue] Hay items en cola y estamos online, sincronizando...');
+        setTimeout(() => {
+            syncPendingQueue();
+            syncDeleteQueue();
+            syncEditQueue();
+        }, 1000); // Pequeño delay para que cargue todo
     }
 }
 
 function handleOnline() {
+    console.log('[Queue] 🟢 Conexión restaurada!');
     isOnline = true;
     updateOnlineStatus();
-    showToast('Conexión restaurada. Sincronizando...', 'success');
-    syncPendingQueue();
+    
+    const totalQueue = pendingQueue.length + deleteQueue.length + editQueue.length;
+    
+    if (totalQueue > 0) {
+        showToast('¡Conexión restaurada! Sincronizando ' + totalQueue + ' operación(es)...', 'success');
+        // Sincronizar automáticamente
+        setTimeout(() => {
+            syncPendingQueue();
+            syncDeleteQueue();
+            syncEditQueue();
+        }, 500);
+    } else {
+        showToast('Conexión restaurada', 'success');
+        // Recargar datos del servidor
+        loadCotizaciones();
+    }
 }
 
 function handleOffline() {
+    console.log('[Queue] 🔴 Sin conexión');
     isOnline = false;
     updateOnlineStatus();
-    showToast('Sin conexión. Los cambios se guardarán localmente.', 'info');
+    showToast('Sin conexión. Los cambios se guardarán en cola.', 'info');
 }
 
 function updateOnlineStatus() {
@@ -908,6 +1326,7 @@ function updateOnlineStatus() {
 // Guardar cola en localStorage
 function saveQueueToStorage() {
     localStorage.setItem('cotizaciones_queue', JSON.stringify(pendingQueue));
+    console.log('[Queue] Cola guardada:', pendingQueue.length, 'items');
     updateQueueBadge();
 }
 
@@ -918,9 +1337,7 @@ function generateTempId() {
 
 // Agregar cotización a la cola
 function addToQueue(cotizacionData) {
-    console.log('[Queue Debug] addToQueue llamado con:', cotizacionData);
-    console.log('[Queue Debug] pendingQueue actual:', pendingQueue);
-    console.log('[Queue Debug] cotizaciones actual:', cotizaciones);
+    console.log('[Queue] Agregando a cola:', cotizacionData);
     
     const queueItem = {
         tempId: generateTempId(),
@@ -930,25 +1347,26 @@ function addToQueue(cotizacionData) {
         retries: 0
     };
     
-    console.log('[Queue Debug] queueItem creado:', queueItem);
-    
     pendingQueue.push(queueItem);
     saveQueueToStorage();
     
     // Agregar a la lista visual de cotizaciones
     const visualCotizacion = {
         id: queueItem.tempId,
-        ...cotizacionData,
+        producto: cotizacionData.producto,
+        cantidad: cotizacionData.cantidad,
+        empaquetadoDeseado: cotizacionData.empaquetadoDeseado,
+        precioEstimado: cotizacionData.precioEstimado,
+        notas: cotizacionData.notas,
+        estado: cotizacionData.estado || 'pendiente',
         fecha_creacion: queueItem.timestamp,
-        isQueued: true // Marcador para saber que está en cola
+        isQueued: true
     };
-    
-    console.log('[Queue Debug] visualCotizacion:', visualCotizacion);
     
     cotizaciones.unshift(visualCotizacion);
     localStorage.setItem('cotizaciones_cache', JSON.stringify(cotizaciones));
     
-    console.log('[Queue Debug] cotizaciones después:', cotizaciones);
+    console.log('[Queue] Item agregado. Total en cola:', pendingQueue.length);
     
     return queueItem;
 }
@@ -956,12 +1374,16 @@ function addToQueue(cotizacionData) {
 // Mezclar cotizaciones pendientes con las cargadas
 function mergePendingWithCotizaciones() {
     pendingQueue.forEach(item => {
-        // Verificar si ya existe en cotizaciones
         const exists = cotizaciones.some(c => c.id === item.tempId);
         if (!exists) {
             cotizaciones.unshift({
                 id: item.tempId,
-                ...item.data,
+                producto: item.data.producto,
+                cantidad: item.data.cantidad,
+                empaquetadoDeseado: item.data.empaquetadoDeseado,
+                precioEstimado: item.data.precioEstimado,
+                notas: item.data.notas,
+                estado: item.data.estado || 'pendiente',
                 fecha_creacion: item.timestamp,
                 isQueued: true
             });
@@ -974,8 +1396,18 @@ function mergePendingWithCotizaciones() {
 
 // Sincronizar cola pendiente
 async function syncPendingQueue() {
-    if (!isOnline || pendingQueue.length === 0) return;
+    if (!isOnline) {
+        console.log('[Queue] No hay conexión, no se puede sincronizar');
+        return;
+    }
+    
+    if (pendingQueue.length === 0) {
+        console.log('[Queue] Cola vacía, nada que sincronizar');
+        return;
+    }
 
+    console.log('[Queue] Iniciando sincronización de', pendingQueue.length, 'items...');
+    
     const itemsToSync = [...pendingQueue];
     let syncedCount = 0;
     let failedCount = 0;
@@ -983,6 +1415,7 @@ async function syncPendingQueue() {
     for (const item of itemsToSync) {
         if (item.status === 'syncing') continue;
         
+        console.log('[Queue] Sincronizando item:', item.tempId);
         item.status = 'syncing';
         saveQueueToStorage();
         updateQueueItemVisual(item.tempId, 'syncing');
@@ -996,12 +1429,15 @@ async function syncPendingQueue() {
                 body: JSON.stringify(item.data)
             });
 
-            if (!response.ok) throw new Error('Error en la respuesta del servidor');
+            if (!response.ok) {
+                throw new Error('Error en la respuesta del servidor: ' + response.status);
+            }
 
             const data = await response.json();
+            console.log('[Queue] Respuesta del servidor:', data);
             
             if (data.success || data.id) {
-                // Éxito: remover de la cola y actualizar ID real
+                console.log('[Queue] ✅ Item sincronizado exitosamente:', item.tempId, '-> ID real:', data.id);
                 removeFromQueue(item.tempId);
                 updateCotizacionId(item.tempId, data.id);
                 syncedCount++;
@@ -1009,7 +1445,7 @@ async function syncPendingQueue() {
                 throw new Error(data.error || 'Error desconocido');
             }
         } catch (error) {
-            console.error('Error sincronizando:', error);
+            console.error('[Queue] ❌ Error sincronizando item:', item.tempId, error);
             item.status = 'failed';
             item.retries++;
             saveQueueToStorage();
@@ -1018,14 +1454,19 @@ async function syncPendingQueue() {
         }
     }
 
+    console.log('[Queue] Sincronización completada. Exitosos:', syncedCount, 'Fallidos:', failedCount);
+
     if (syncedCount > 0) {
-        showToast(`${syncedCount} cotización(es) sincronizada(s) correctamente`, 'success');
-        loadCotizaciones(); // Recargar datos del servidor
+        showToast('✅ ' + syncedCount + ' cotización(es) sincronizada(s) correctamente', 'success');
+        // Recargar datos del servidor para obtener IDs reales
+        loadCotizaciones();
     }
     
     if (failedCount > 0) {
-        showToast(`${failedCount} cotización(es) no pudieron sincronizarse. Se reintentará.`, 'error');
+        showToast('⚠️ ' + failedCount + ' cotización(es) no pudieron sincronizarse', 'error');
     }
+    
+    updateQueueBadge();
 }
 
 // Remover item de la cola
@@ -1064,7 +1505,7 @@ function updateQueueItemVisual(tempId, status) {
 
 // Obtener cantidad de items en cola
 function getQueueCount() {
-    return pendingQueue.length;
+    return pendingQueue.length + deleteQueue.length + editQueue.length;
 }
 
 // Actualizar badge de cola en el header
@@ -1082,6 +1523,20 @@ function updateQueueBadge() {
             queueBtn.classList.add('has-items');
         } else {
             queueBtn.classList.remove('has-items');
+        }
+        
+        // Cambiar color si hay eliminaciones pendientes
+        if (deleteQueue.length > 0) {
+            queueBtn.classList.add('has-deletes');
+        } else {
+            queueBtn.classList.remove('has-deletes');
+        }
+        
+        // Añadir clase si hay ediciones pendientes
+        if (editQueue.length > 0) {
+            queueBtn.classList.add('has-edits');
+        } else {
+            queueBtn.classList.remove('has-edits');
         }
     }
 }

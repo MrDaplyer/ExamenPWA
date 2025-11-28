@@ -9,12 +9,21 @@ app = Flask(__name__)
 app.secret_key = os.urandom(24)
 
 # Configuración de la base de datos
+# Para desarrollo LOCAL (WAMP):
 DB_CONFIG = {
     'host': 'localhost',
     'database': 'sistema_cotizaciones',
     'user': 'root',
-    'password': ''  # WAMP por defecto no tiene password para root
+    'password': ''
 }
+
+# Para PRODUCCIÓN (Hostinger) - descomentar cuando subas al servidor:
+# DB_CONFIG = {
+#     'host': '185.232.14.52',
+#     'database': 'u760464709_22005478_bd',
+#     'user': 'u760464709_22005478_usr',
+#     'password': '2iA:s#2YPB'
+# }
 
 def get_db_connection():
     """Crear conexión a la base de datos"""
@@ -253,4 +262,5 @@ def delete_cotizacion(id):
     return jsonify({'error': 'Error de conexión'}), 500
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+    # Cloudflare Tunnel maneja HTTPS, así que corremos en HTTP localmente
+    app.run(debug=True, host='0.0.0.0', port=5000)
